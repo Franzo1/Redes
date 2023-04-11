@@ -1,4 +1,6 @@
 import socket
+import requests
+import httplib2
 
 
 def receive_http(connection_socket, buff_size, end_head):
@@ -42,8 +44,19 @@ def receive_http(connection_socket, buff_size, end_head):
 def send_http(connection_socket, head_list):
     if ("GET" in head_list[0]):
         http_string = ''.join(head_list)
-        print(http_string)
-        connection_socket.send(http_string.encode())
+        adress = (http_string.split("GET", 1)[1].split("HTTP", 1))[0].replace(" ", "")
+        # host = (http_string.split("Host: ", 1)[1].split("\r\n", 1))[0].replace(" ", "")
+        response = requests.get("http://example.com")
+        dict = list(response.headers.keys())
+        HEAD = ""
+        HEAD += (http_string.split(" ", 2)[2].split("\r\n", 1))[0].replace(" ", "")
+        HEAD += " " + str(response.status_code) + " " + response.reason + "\r\n"
+        for keys in dict:
+            HEAD += keys + ": " + response.headers[keys] + "\r\n"
+        HEAD += "\r\n"
+        HTTP = HEAD + response.text
+        print(HTTP)
+        connection_socket.send(HTTP.encode())
 
 
 buff_size = 4
