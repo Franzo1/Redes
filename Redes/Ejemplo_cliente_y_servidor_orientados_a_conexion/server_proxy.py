@@ -1,5 +1,6 @@
 import socket
 import requests
+import json
 import httplib2
 
 
@@ -44,7 +45,8 @@ def receive_http(connection_socket, buff_size, end_head):
 def send_http(connection_socket, head_list):
     if ("GET" in head_list[0]):
         http_string = ''.join(head_list)
-        adress = (http_string.split("GET", 1)[1].split("HTTP", 1))[0].replace(" ", "")
+        # print(http_string)
+        # dress = (http_string.split("GET", 1)[1].split("HTTP", 1))[0].replace(" ", "")
         # host = (http_string.split("Host: ", 1)[1].split("\r\n", 1))[0].replace(" ", "")
         response = requests.get("http://example.com")
         dict = list(response.headers.keys())
@@ -53,9 +55,11 @@ def send_http(connection_socket, head_list):
         HEAD += " " + str(response.status_code) + " " + response.reason + "\r\n"
         for keys in dict:
             HEAD += keys + ": " + response.headers[keys] + "\r\n"
-        HEAD += "\r\n"
+        with open("/home/franz/Escritorio/RedesGit/Redes/Redes/Ejemplo_cliente_y_servidor_orientados_a_conexion/name_user.json") as file:
+            data = json.load(file)
+            name_user = data['users'][0]["nombre"]
+        HEAD += "X-ElQuePregunta: "+name_user+"\r\n\r\n"
         HTTP = HEAD + response.text
-        print(HTTP)
         connection_socket.send(HTTP.encode())
 
 
