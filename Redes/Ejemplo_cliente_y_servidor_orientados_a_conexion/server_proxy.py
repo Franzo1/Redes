@@ -77,15 +77,12 @@ def send_http(head_list):
         if adressRequest in blocked_list:
             return "HTTP/1.1 403 Forbidden\r\n\r\n"
         else:
-            adressRequest = adressRequest.split("://")[1]
-            if adressRequest[-1] == "/":
-                adressRequest = adressRequest[:-1]
-            print(adressRequest)
+            adressHost = (http_string.split("Host: ", 1)[1].split("\r\n", 1))[0].replace(" ", "")
             # host = (http_string.split("Host: ", 1)[1].split("\r\n", 1))[0].replace(" ", "")
             # response = requests.get("http://example.com")
             client_proxy = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             # ip = socket.gethostbyname("example.com")
-            address = (adressRequest, 80)
+            address = (adressHost, 80)
             client_proxy.connect(address)
             with open("/home/franz/Escritorio/RedesGit/Redes/Redes/Ejemplo_cliente_y_servidor_orientados_a_conexion/name_user.json") as file:
                 dataName = json.load(file)
@@ -102,7 +99,7 @@ def send_http(head_list):
             for i in forbidden_list:
                 word = list(i.keys())[0]
                 if word in body_string:
-                    body_string.replace(word,i[word])
+                    body_string = body_string.replace(word,i[word])
 
             """ dict = list(response.headers.keys())
             HEAD = ""
@@ -117,9 +114,9 @@ def send_http(head_list):
 
 
 
-buff_size = 4
+buff_size = 50
 end_of_head = "\r\n\r\n"
-new_socket_address = ('localhost', 8009)
+new_socket_address = ('localhost', 8001)
 
 print('Creando socket - Proxy')
 
