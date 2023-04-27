@@ -1,0 +1,26 @@
+Documentación tarea DNS:
+
+Se recibe la query del cliente y se parsea mediante la función query_parser
+Esta función no solo entrega la query parseada, también crea una lista con sus datos importantes.
+
+Luego, se manda la query sin parsear a la función resolver.
+Crea un nuevo socket que se conectará con la IP del servidor raíz de DNS.
+Dentro de un while, se llama a la función sendAndRecv para obtener la response.
+
+En sendAndRecv, se envía la query y recibe la respuesta, de la cual obtenemos algunos datos útiles.
+Se verifica si existe alguna respuesta tipo A en la sección Answer (accedemos mediante la lista info)
+Si es así, simplemente retorna la response.
+Si no, verifica si hay una respuesta tipo NS en Authority.
+En caso de tenerla, se trata de extraer alguna respuesta tipo A de Additional.
+De encontrarse, se envía la query a la primera IP ubicada en Additional.
+Si no, se saca de Authority el nombre de algún Name Server y se crea una query con ella.
+Dicha query es usada en resolver de manera recursiva.
+Una vez recibida la response, se parsea para extraer el primer elemento de la sección Answer.
+De este se obtiene la IP a la que debe volver a enviarse la query original
+De esta finalmente se recibe la response que se debe retornar.
+En cualquier otro caso, se ignora la query.
+
+De vuelta a la función resolver, se verifica que la response tenga algo en la sección Answer.
+Si no tiene nada, continúa el while, así hasta que se obtenga la respuesta apropiada.
+
+Finalmente, la respuesta entregada por la función resolver se devuelve al cliente.

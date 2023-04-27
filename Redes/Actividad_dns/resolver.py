@@ -1,39 +1,103 @@
 import socket
-from dnslib import DNSRecord, DNSHeader, DNSQuestion
-from dnslib.dns import CLASS, QTYPE, RR, A
+from dnslib import DNSRecord
+from dnslib.dns import QTYPE, A, NS
 import dnslib
 
 Root_IP = "192.33.4.12"
 buff_size = 4096
 
+def sendAndRecv(mensaje_consulta, address, dns_socket):
 
-def resolver(mensaje_consulta):
-    
-    dns_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    address = (Root_IP, 53)
     dns_socket.sendto(mensaje_consulta, address)
 
     answer, _ = dns_socket.recvfrom(buff_size)
     parsed_answer, info = query_parser(answer)
-    count = 0
+
+    print(parsed_answer)
 
     hasTypeA = False
 
-    print(info[1])
-
     if info[1] > 0:
-        rrs = list()
-        while count < info[1]:
-            rrs.append(parsed_answer.get_a())
-            count += 1
         
-        for i in rrs:
-            print(i.rtype)
+        for i in info[4]:
             if i.rtype == A:
                 hasTypeA = True
 
+
     if hasTypeA:
         return answer
+    
+    else:
+        
+        hasTypeNS = False
+        
+        for i in info[5]:
+            type = QTYPE.get(i.rtype)
+            if type == NS:
+                hasTypeNS = True
+        
+        if hasTypeNS:
+
+            hasAinNS = False
+        
+            for i in info[6]:
+                artype = QTYPE.get(i.rclass) 
+                if artype == A:
+                    hasAinNS = True
+            
+            if hasAinNS:
+                
+                foundIP = False
+                
+                for i in info[6]:
+                    if i.rdata != None and not foundIP:
+                        firstIP = i.rdata
+                        foundIP = True
+                
+                if foundIP:
+                    address = (str(firstIP), 53)
+                    dns_socket.sendto(mensaje_consulta, address)
+                    answer, _ = dns_socket.recvfrom(buff_size)
+                    return answer
+                
+                else:
+                    rd = info[5][0].rdata
+                    if isinstance(rd, dnslib.dns.SOA):
+                        name_server = rd.get_mname() 
+                    elif isinstance(rd, dnslib.dns.NS):
+                        name_server = rd
+                    address = (str(name_server), 53)
+                    q = DNSRecord.question(name_server).pack()
+                    answer = resolver(q)
+                    answer_parsed, info = query_parser(answer)
+                    first_answer = answer_parsed.get_a()
+                    ip = str(first_answer.rdata)
+                    address = (ip, 53)
+                    dns_socket.sendto(mensaje_consulta, address)
+                    answer, _ = dns_socket.recvfrom(buff_size)
+                    return answer
+
+        
+        else:
+            print("Ignored")
+
+    
+
+
+def resolver(mensaje_consulta):
+
+    success = False
+    dns_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    address = (Root_IP, 53)
+    while not success:
+        answer = sendAndRecv(mensaje_consulta, address, dns_socket)
+        _, info = query_parser(answer)
+        if info[1] > 0:
+            success = True
+    return answer
+    
+
+
 
 
 def query_parser(query):
@@ -53,20 +117,17 @@ def query_parser(query):
 
 resolver_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
-address = ('localhost', 8000)
+local_address = ('localhost', 8000)
 
-resolver_socket.bind(address)
+resolver_socket.bind(local_address)
 
 while True:
 
     query_rcv, address = resolver_socket.recvfrom(buff_size)
-
-    print("\r\n")
-    print(query_rcv)
-    print("\r\n")
     query_parse, info = query_parser(query_rcv)
+    print("Se resuelve la query:\r\n")
     print(query_parse)
-    print("\r\n")
     answer = resolver(query_rcv)
+    resolver_socket.sendto(answer, address)
 
-resolver_socket.close()
+    resolver_socket.close()

@@ -1,0 +1,30 @@
+Franz Widerstrom
+Documentación de server_proxy:
+
+Para probar se debe configurar el navegador para utilizar proxy en localhost en el puerto 8000.
+
+Se crea el socket y se empieza a esperar un cliente.
+
+Se recibe la request mediante la función receive_http:
+Se van recibiendo trozos del mensaje y estos se van insertando decodificados en una lista.
+Esto se hace hasta que se detecta el final del mensaje (\r\n\r\n)
+
+Luego se llama a la función send_http:
+Primero verifica que la request es GET
+Une los strings de la lista, y extrae de este el adress que pide la request.
+Si es parte de la lista bloqueada (contenida en un json) se devuelve un error 403.
+Si no, se extrae el host del mensaje y se conecta a este por el puerto 80.
+Se envía la request al servidor. Luego, la recibe mediante la función receive_head.
+Se recibe la response en trozos y se colocan decodificados en una lista y un string.
+Hace una pausa al llegar al final del head.
+Del string se saca el content_length, los bytes del head y los bytes de lo que se alcanzó a recibir del body.
+Si el buffer es menor en tamaño a la respuesta completa, se debe recibir varias veces más si lo que falta por recibir es más grande que el buffer
+Esto se hace llamando a la función receive_huge_body, que verifica si se cumplieron los bytes del content_length.
+Al final se une la lista head y se le concatena lo que recibió del body.
+Si el buffer es suficientemente grande para necesitar recibir una sola vez más, se llama a la función receive_body. 
+En caso de que el buffer haya sido muy grande y recibió la response completa en un solo recv, solo guarda todo en la lista como un elemento.
+Ahora vuelve a la función send_http.
+Agrega al final del head el nombre del usuario que hizo la request.
+Por último, filtra la palabras prohibidas (vienen de un json).
+
+Se reenvía la response hacie el cliente.
