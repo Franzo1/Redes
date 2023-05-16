@@ -33,6 +33,7 @@ def sendAndRecv(mensaje_consulta, address, dns_socket):
         
         for i in info[5]:
             type = QTYPE.get(i.rtype)
+            type = i.rdata 
             if type == NS:
                 hasTypeNS = True
         

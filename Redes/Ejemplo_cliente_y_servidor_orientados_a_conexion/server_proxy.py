@@ -41,17 +41,19 @@ def receive_head(connection_socket, buff_size, end_head):
     after_head = head_decode.split(end_head, 1)[1]
     bytes_afhead = len(after_head.encode('utf-8'))
     head_decode = head_decode.split(end_head, 1)[0] + end_head
+    print(head_decode)
 
     if bytes_head + content_length > buff_size:
         if content_length - bytes_afhead > buff_size:
             body_string = receive_huge_body(connection_socket, buff_size, int(content_length), after_head)
         else:
             body_string = receive_body(connection_socket, after_head)
-        head_list.append(head_decode)
+        head_list.append(recv_http.decode().split("\r\n\r\n")[0]+"\r\n\r\n")
     else:
         body_string = ""
         head_list.append(full_head.decode())
 
+    print("".join(head_list))
     return head_list, body_string
 
 def receive_body(connection_socket, body_start):
@@ -128,7 +130,7 @@ def send_http(head_list, buffer_size):
 
 buff_size = 40
 end_of_head = "\r\n\r\n"
-new_socket_address = ('localhost', 8000)
+new_socket_address = ('localhost', 8001)
 
 print('Creando socket - Proxy\n')
 
@@ -148,6 +150,7 @@ while True:
     response = send_http(recv_http, buff_size)
     print('Respuesta del servidor:\n')
     print(response)
+    print(bytes(response, 'utf-8'))
     new_socket.send(response.encode())
 
     print('Se ha reenviado la response\n')

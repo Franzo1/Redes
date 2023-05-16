@@ -1,3 +1,4 @@
+from curses.ascii import isdigit
 import socket
 import random
 
@@ -44,7 +45,7 @@ class socketTCP:
         one = socketTCP.create_segment(dictOne)
         print("Cliente: envía SYN")
         self.socket.sendto(one, address)
-        recv_message, self.otherAddress = self.socket.recvfrom(self.buffSize)
+        recv_message, self.otherAddress = self.socket.recvfrom(20+self.buffSize)
         dictTwo = socketTCP.parse_segment(recv_message)
         
         if(dictTwo["[SYN]"]=="1" and dictTwo["[ACK]"]=="1" and 
@@ -69,7 +70,7 @@ class socketTCP:
     
     def accept(self):
 
-        recv_message, self.otherAddress = self.socket.recvfrom(self.buffSize)
+        recv_message, self.otherAddress = self.socket.recvfrom(20+self.buffSize)
         dictOne = socketTCP.parse_segment(recv_message)
 
         if(dictOne["[SYN]"]=="1" and dictOne["[ACK]"]=="0" and dictOne["[FIN]"]=="0"):
@@ -86,7 +87,7 @@ class socketTCP:
             two = socketTCP.create_segment(dictTwo)
             print("Server: envía SYN+ACK")
             self.socket.sendto(two, self.otherAddress)
-            recv_message, self.otherAddress = self.socket.recvfrom(self.buffSize)
+            recv_message, self.otherAddress = self.socket.recvfrom(20+self.buffSize)
             dictThree = socketTCP.parse_segment(recv_message)
             
             if(dictThree["[SYN]"]=="0" and dictThree["[ACK]"]=="1" and 
@@ -99,13 +100,39 @@ class socketTCP:
                 newSock.set_otherAddress(self.otherAddress)
                 newSock.set_buffSize(self.buffSize)
                 newSock.set_seq(self.seq+1)
+                newSock.bind()
                 return newSock, newSock.address
 
-    def send_in_bytes(self):
+    def send(self):
 
+        print("Cliente: Comienza 3-way handshake")
         byte_inicial = 0
 
         message_sent_so_far = ''.encode()
+        
+        firstDict= {
+                "[SYN]": "0",
+                "[ACK]": "0",
+                "[FIN]": "0",
+                "[SEQ]": str(self.seq),
+                "[DATOS]": str(len(self.message))
+            }
+        
+        firstSegment = socketTCP.create_segment(firstDict)
+        self.socket.sendto(firstSegment, self.otherAddress)
+        self.socket.settimeout(10)
+        
+        try:
+            recv_message, self.otherAddress = self.socket.recvfrom(20+self.buffSize)
+            dictAck = socketTCP.parse_segment(recv_message)
+            if (dictAck["[SYN]"]=="0" and dictAck["[ACK]"]=="1" and dictAck["[FIN]"]=="0" and 
+                int(dictAck["[SEQ]"])>self.seq and dictAck["[DATOS]"]=="1"):
+                print("Cliente: Se enviaron " + str(int(dictAck["[SEQ]"])-self.seq) + " bytes con éxito! (Info len), SEQ = " + str(self.seq))
+                self.seq = int(dictAck["[SEQ]"])
+        except socket.timeout:
+                print("Cliente: Timeout!")
+                self.send()
+                return
 
         while True:
 
@@ -117,7 +144,7 @@ class socketTCP:
                 "[SYN]": "0",
                 "[ACK]": "0",
                 "[FIN]": "0",
-                "[SEQ]": "8",
+                "[SEQ]": str(self.seq),
                 "[DATOS]": message_slice.decode()
             }
 
@@ -125,35 +152,91 @@ class socketTCP:
 
             self.socket.sendto(segment, self.otherAddress)
 
-            message_sent_so_far += message_slice
+            self.socket.settimeout(10)
+            try:
+                
+                recv_message, self.otherAddress = self.socket.recvfrom(20+self.buffSize)
+                dictAck = socketTCP.parse_segment(recv_message)
+                
+                if (dictAck["[SYN]"]=="0" and dictAck["[ACK]"]=="1" and 
+                    dictAck["[FIN]"]=="0" and int(dictAck["[SEQ]"])>self.seq):
+                    print("Cliente: Se enviaron " + str(int(dictAck["[SEQ]"])-self.seq) + " bytes con éxito!, SEQ = " + str(self.seq))
+                    self.seq = int(dictAck["[SEQ]"])
+                
+                message_sent_so_far += message_slice
 
-            if max_byte == len(self.message):
-                self.socket.sendto("stop".encode(), self.otherAddress)
-                break
+                if max_byte == len(self.message):
+                    break
 
-            byte_inicial += self.buffSize
+                byte_inicial += self.buffSize
 
-    def receive_in_bytes(self):
-    
-        recv_message, self.otherAddress = self.socket.recvfrom(self.buffSize)
-        full_message = recv_message
+            except socket.timeout:
 
-        is_end_of_message = recv_message == "stop".encode()
+                print("Cliente: Timeout!")
+
+
+
+            
+    def recv(self):
+        
+        print("Server: Comienza 3-way handshake")
+        recv_message, self.otherAddress = self.socket.recvfrom(20+self.buffSize)
+        dictMessage = socketTCP.parse_segment(recv_message)
+        """ if (not isdigit(dictMessage["[DATOS]"])):
+            return self.recv() """
+        full_message = ""
+        backup_message = ""
+        bytesSoFar = 0
+        message_length = int(dictMessage["[DATOS]"])
+        self.set_seq(int(dictMessage["[SEQ]"])+1)
+        dictResponse = {
+                "[SYN]": "0",
+                "[ACK]": "1",
+                "[FIN]": "0",
+                "[SEQ]": str(self.seq),
+                "[DATOS]": "1"
+        }
+        segmentResponse = socketTCP.create_segment(dictResponse)
+        self.socket.sendto(segmentResponse, self.otherAddress)
+
+        is_end_of_message = min(message_length, bytesSoFar) == message_length
 
         while not is_end_of_message:
 
-            recv_message, self.otherAddress = self.socket.recvfrom(self.buffSize)
+            recv_message, self.otherAddress = self.socket.recvfrom(20+self.buffSize)
+            dictMessage = socketTCP.parse_segment(recv_message)
+            
+            if (dictMessage["[SYN]"]=="0" and dictMessage["[ACK]"]=="0" and 
+                dictMessage["[FIN]"]=="0" and int(dictMessage["[SEQ]"])==self.seq):
+                backup_message += full_message
+                print("Server: Se recibió con éxito!, SEQ = " + str(self.seq))
+            
+            elif (dictMessage["[SYN]"]=="0" and dictMessage["[ACK]"]=="0" and 
+                dictMessage["[FIN]"]=="0" and int(dictMessage["[SEQ]"])<self.seq):
+                self.set_seq(len(dictMessage["[SEQ]"]))
+                full_message = backup_message
+                print("Server: Se perdió un mensaje! Volviendo a recibir, SEQ = " + str(self.seq))
+            
+            full_message += dictMessage["[DATOS]"]
+            self.set_seq(self.seq+len(dictMessage["[DATOS]"]))
+            
+            dictResponse = {
+                "[SYN]": "0",
+                "[ACK]": "1",
+                "[FIN]": "0",
+                "[SEQ]": str(self.seq),
+                "[DATOS]": ""
+            }
+            
+            segmentResponse = socketTCP.create_segment(dictResponse)
+            self.socket.sendto(segmentResponse, self.otherAddress)
 
-            full_message += recv_message
+            bytesSoFar = len(full_message.encode())
+            is_end_of_message = min(message_length, bytesSoFar) == message_length
 
-            is_end_of_message = recv_message == "stop".encode()
-
-        index = full_message.rfind("stop".encode())
-        full_message = full_message[:index]
-
-        self.otherMessage = full_message.decode()
+        self.otherMessage = full_message.encode()
         
-        return full_message, self.otherAddress
+        return self.otherMessage, self.otherAddress
     
     @staticmethod
     def parse_segment(segment):
