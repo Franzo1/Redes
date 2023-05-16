@@ -18,3 +18,5 @@ client_socketTCP.send()
 """ # test 3
 client_socketTCP.set_message()
 client_socketTCP.send() """
+
+client_socketTCP.close()
