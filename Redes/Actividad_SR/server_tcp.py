@@ -9,7 +9,7 @@ server_socketTCP.bind()
 connection_socketTCP, new_address = server_socketTCP.accept()
 
 # test 1
-full_message, newAddress = connection_socketTCP.recv(16, "selective_repeat")
+full_message, newAddress = connection_socketTCP.recv(32, "selective_repeat")
 print("Test 1 received:", full_message)
 if full_message == "Mensje de len=16".encode(): print("Test 1: Passed")
 else: print("Test 1: Failed")
