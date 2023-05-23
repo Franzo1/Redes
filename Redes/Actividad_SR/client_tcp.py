@@ -6,7 +6,8 @@ import socket
 
 client_socketTCP = socketTCP()
 client_socketTCP.set_buffSize(3)
-client_socketTCP.connect(('localhost', 8000))
+client_socketTCP.set_address(('localhost', 8003))
+client_socketTCP.connect(('localhost', 8003))
 client_socketTCP.set_timeout(5)
 
 # test 1
