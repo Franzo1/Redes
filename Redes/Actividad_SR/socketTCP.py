@@ -31,6 +31,9 @@ class socketTCP:
     def set_message(self):
         self.message = input("Escriba su mensaje: ").encode()
 
+    def set_otherMessage(self, otherMessage):
+        self.otherMessage = otherMessage
+
     def set_otherMessageLen(self, otherMessageLen):
         self.otherMessageLen = otherMessageLen
     
@@ -349,7 +352,7 @@ class socketTCP:
                     self.set_bytesSoFar(self.bytesSoFar+bytesSoFar)
                     break
 
-        self.otherMessage = full_message.encode()
+        self.set_otherMessage(full_message.encode())
         
         return self.otherMessage, self.otherAddress
     
@@ -473,15 +476,19 @@ class socketTCP:
             print("Server: FIN llegó con perdidas!")
             self.recv_close()
 
-    def send(self, message, mode="stop_and_wait"):
-        self.set_message(message)
+    def send(self, mode="stop_and_wait"):
+        self.set_message()
         if mode == "stop_and_wait":
             self.send_using_stop_and_wait()
+        if mode == "selective_repeat":
+            self.send_using_selective_repeat()
     
     def recv(self, buff_size, mode="stop_and_wait"):
         self.set_buffSize(buff_size)
         if mode == "stop_and_wait":
             self.recv_using_stop_and_wait()
+        if mode == "selective_repeat":
+            self.recv_using_selective_repeat()
 
     def send_using_selective_repeat(self):
 
@@ -489,8 +496,8 @@ class socketTCP:
 
         seqY = self.seq
         
-        message_length = len(self.message.encode())
-        encoded_message = self.message.encode()
+        message_length = len(self.message)
+        encoded_message = self.message
         n = 16
         i = 0
         bytesSoFar = 0
@@ -604,6 +611,7 @@ class socketTCP:
         seqs = [0] * window_size
         buff_size = self.buffSize
         bytesSoFar = 0
+        messageSoFar = ""
 
         while True:
             message, address = self.socket.recvfrom(self.buffSize+20)
@@ -614,7 +622,7 @@ class socketTCP:
             if(dictMessage["[SYN]"]=="0" and dictMessage["[ACK]"]=="0" and dictMessage["[FIN]"]=="0" 
                and dictMessage["[SEQ]"].isnumeric() and dictMessage["[DATOS]"]!=""):
                 if message_length == 0 and int(dictMessage["[SEQ]"]) == seqY:
-                    message_length = dictMessage["[DATOS]"]
+                    message_length = int(dictMessage["[DATOS]"])
                     received[0] = 1
                     dictAck = {
                         "[SYN]": "0",
@@ -642,7 +650,28 @@ class socketTCP:
                             window_index = i
                             break
                     recv_window.put_data(dictMessage["[DATOS]"], int(dictMessage["[SEQ]"]), window_index)
-                    received[]
+                    dictAck = {
+                        "[SYN]": "0",
+                        "[ACK]": "1",
+                        "[FIN]": "0",
+                        "[SEQ]": dictMessage["[SEQ]"],
+                        "[DATOS]": ""
+                    }
+                    ack_segment = socketTCP.create_segment(dictAck)
+                    self.socket.sendto(ack_segment, self.otherAddress)
+                    received[int(dictMessage["[SEQ]"])-seqY] = 1
+                    if window_index == 0:
+                        while True:
+                            if received[recv_window.get_sequence_number(0) - seqY] == 1:
+                                received[recv_window.get_sequence_number(0) - seqY] = 0
+                                messageSoFar += recv_window.get_data(0)
+                                recv_window.move_window(1)
+                                seqs[(recv_window.get_sequence_number(0) - seqY) % window_size] = recv_window.get_sequence_number(window_size)
+                            else:
+                                break
+                    if bytesSoFar >= min(message_length, buff_size):
+                        self.set_otherMessage(messageSoFar)
+                        return self.otherMessage, self.otherAddress
 
 
 
