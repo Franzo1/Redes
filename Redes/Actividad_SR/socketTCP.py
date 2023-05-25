@@ -131,12 +131,13 @@ class socketTCP:
                         newSock.set_address((myIP, Host))
                         newSock.set_otherAddress(self.otherAddress)
                         newSock.set_buffSize(self.buffSize)
-                        newSock.set_seq(self.seq+1)
+                        newSock.set_seq(int(dictTwo["[SEQ]"])+1)
                         newSock.bind()
                         return newSock, newSock.address
                     
                     elif(dictThree["[SYN]"]=="1" and dictThree["[ACK]"]=="0" and dictThree["[FIN]"]=="0"):
                         print("Server: Volviendo a recibir SYN")
+                        self.set_seq(int(dictThree["[SEQ]"])+1)
                         dictTwo = {
                             "[SYN]": "1",
                             "[ACK]": "1",
@@ -158,7 +159,7 @@ class socketTCP:
             newSock.set_address((myIP, Host))
             newSock.set_otherAddress(self.otherAddress)
             newSock.set_buffSize(self.buffSize)
-            newSock.set_seq(self.seq+1)
+            newSock.set_seq(int(dictTwo["[SEQ]"])+1)
             newSock.bind()
             return newSock, newSock.address
 
@@ -200,12 +201,8 @@ class socketTCP:
                 print("Cliente: Timeout!")
                 self.send_using_stop_and_wait()
                 return
-
-        finalAttempts = 0
+        
         while True:
-            if finalAttempts == 5:
-                print("Cliente: El server ya debe tener el mensaje completo")
-                break
 
             max_byte = min(len(self.message), byte_inicial + 3)
 
@@ -230,7 +227,7 @@ class socketTCP:
                 dictAck = socketTCP.parse_segment(recv_message)
                 
                 if (dictAck["[SYN]"]=="0" and dictAck["[ACK]"]=="1" and 
-                    dictAck["[FIN]"]=="0" and int(dictAck["[SEQ]"])>self.seq):
+                    dictAck["[FIN]"]=="0" and int(dictAck["[SEQ]"])>=self.seq):
                     print("Cliente: Se enviaron " + str(int(dictAck["[SEQ]"])-self.seq) + " bytes con éxito!, SEQ = " + str(self.seq))
                     self.seq = int(dictAck["[SEQ]"])
                 
@@ -246,8 +243,6 @@ class socketTCP:
             except socket.timeout:
 
                 print("Cliente: Timeout!")
-                if max_byte == len(self.message):
-                    finalAttempts += 1
 
 
 
@@ -292,7 +287,7 @@ class socketTCP:
                     return
                 break
             elif (dictMessage["[SYN]"]=="0" and dictMessage["[ACK]"]=="0" and 
-                    dictMessage["[FIN]"]=="0"):
+                    dictMessage["[FIN]"]=="0" and int(dictMessage["[SEQ]"])==self.seq):
                 full_message = ""
                 backup_message = ""
                 bytesSoFar = 0
@@ -302,6 +297,20 @@ class socketTCP:
                 recv_message, self.otherAddress = self.socket.recvfrom(23)
                 dictMessage = socketTCP.parse_segment(recv_message)
                 break
+            elif (dictMessage["[SYN]"]=="0" and dictMessage["[ACK]"]=="0" and 
+                    dictMessage["[FIN]"]=="0" and int(dictMessage["[SEQ]"])<self.seq):
+                print("Server: Cliente está atrapado en el Stop and Wait anterior!")
+                dictAck = {
+                    "[SYN]": "0",
+                    "[ACK]": "1",
+                    "[FIN]": "0",
+                    "[SEQ]": dictMessage["[SEQ]"],
+                    "[DATOS]": ""
+                }
+                ack_segment = socketTCP.create_segment(dictAck)
+                self.socket.sendto(ack_segment, self.otherAddress)
+                self.recv_using_stop_and_wait()
+                return          
             else:
                 print("Server: No llegó bien el largo del mensaje!")
                 self.recv_using_stop_and_wait()
@@ -327,7 +336,7 @@ class socketTCP:
                 bytesSoFar -= len(dictMessage["[DATOS]"])
                 isSegment = True
                 print("Server: Se perdió un mensaje! Volviendo a recibir, SEQ = " + str(self.seq))
-            
+
             else:
                 isSegment = False
 
@@ -471,7 +480,16 @@ class socketTCP:
             
             self.socket.close()
             print("Server: conexión cerrada")
-
+        elif (dictOne["[SYN]"]=="0" and dictOne["[ACK]"]=="0" and dictOne["[FIN]"]=="0"):
+            dictAck = {
+                "[SYN]": "0",
+                "[ACK]": "1",
+                "[FIN]": "0",
+                "[SEQ]": dictOne["[SEQ]"],
+                "[DATOS]": ""
+            }
+            ack_segment = socketTCP.create_segment(dictAck)
+            self.socket.sendto(ack_segment, self.otherAddress)
         else:
             print("Server: FIN llegó con perdidas!")
             self.recv_close()
@@ -495,6 +513,7 @@ class socketTCP:
         print("Cliente: Comienza Selective Repeat!")
 
         seqY = self.seq
+        print(seqY)
         
         message_length = len(self.message)
         message = self.message.decode()
@@ -552,11 +571,14 @@ class socketTCP:
                             for x in range(0, window_size):
                                 if i == (data_window.get_sequence_number(x)-seqY)%window_size:
                                     windex = x
-                        else:
-                            print("Hay "+nones+" none")
-                            for x in range(0, nones%2):
+                        elif nones == 1:
+                            print("Hay "+str(nones)+" none")
+                            for x in range(0, 1):
                                 if i == (data_window.get_sequence_number(x)-seqY)%window_size:
                                     windex = x
+                        else:
+                            print("Hay "+str(nones)+" none")
+                            windex = 0
                         current_data = data_window.get_data(windex)
                         current_seq = data_window.get_sequence_number(windex)
                         dictSegment = {
@@ -571,7 +593,6 @@ class socketTCP:
 
                         print("Cliente: Se volvió a enviar el trozo de SEQ = "+str(current_seq))
                         timeout_list.start_timer((current_seq - seqY)%window_size)
-                        print("Timer que se vuelve a comenzar: " + str((current_seq - seqY)%window_size))
                         repeats+=1
                         if repeats == 100:
                             return
@@ -587,7 +608,6 @@ class socketTCP:
                     aSeq = int(answerDict["[SEQ]"])
                     index = (aSeq - seqY) % window_size
                     timeout_list.stop_timer(index)
-                    print("Timer que se detiene" + str(index))
                     acks[aSeq - seqY] = 1
                     if data_window.get_sequence_number(0) == aSeq:
                         for i in range(window_size*2):
@@ -612,7 +632,6 @@ class socketTCP:
                                     self.socket.sendto(current_segment, self.otherAddress)
                                     print("Cliente: Se envió el trozo de SEQ = "+str(seqs[(i+(aSeq-seqY))%window_size]))
                                     timeout_list.start_timer((int(dictSegment["[SEQ]"])-seqY)%window_size)
-                                    print("Timer que comienza: " + str((int(dictSegment["[SEQ]"])-seqY)%window_size))
                             else:
                                 break
 
@@ -622,6 +641,7 @@ class socketTCP:
 
         window_size = 3
         seqY = self.seq
+        print(seqY)
         firstSeq = seqY
         recv_window = sw.SlidingWindow(window_size, [], seqY)
         message_length = 0
@@ -639,7 +659,7 @@ class socketTCP:
 
             if(dictMessage["[SYN]"]=="0" and dictMessage["[ACK]"]=="0" and dictMessage["[FIN]"]=="0" 
                and dictMessage["[SEQ]"].isnumeric() and dictMessage["[DATOS]"]!=""):
-                if message_length == 0 and int(dictMessage["[SEQ]"]) == seqY:
+                if message_length == 0 and int(dictMessage["[SEQ]"]) == seqY and dictMessage["[DATOS]"].isnumeric():
                     print("Server: Se recibió el largo del mensaje!")
                     message_length = int(dictMessage["[DATOS]"])
                     received[0] = 1
@@ -668,7 +688,7 @@ class socketTCP:
                         else:
                             break
                 elif seqs.count(int(dictMessage["[SEQ]"])) == 0:
-                    print("Server: se recibió un SEQ anterior")
+                    print("Server: se recibió un SEQ anterior ("+dictMessage["[SEQ]"]+")")
                     dictAck = {
                         "[SYN]": "0",
                         "[ACK]": "1",
@@ -678,9 +698,8 @@ class socketTCP:
                     }
                     ack_segment = socketTCP.create_segment(dictAck)
                     self.socket.sendto(ack_segment, self.otherAddress)
-                elif seqs.count(int(dictMessage["[SEQ]"])) > 0:
-                    print("Server: Se recibió un segmento de SEQ = " + dictMessage["[SEQ]"])
-                    bytesSoFar += len(dictMessage["[DATOS]"].encode())
+                elif seqs.count(int(dictMessage["[SEQ]"])) > 0 and (message_length > 0 or not (dictMessage["[DATOS]"].isnumeric())):
+                    
                     for i in range(window_size):
                         if int(dictMessage["[SEQ]"]) == ((firstSeq-seqY+i)%(window_size*2))+seqY:
                             window_index = i
@@ -695,25 +714,31 @@ class socketTCP:
                     }
                     ack_segment = socketTCP.create_segment(dictAck)
                     self.socket.sendto(ack_segment, self.otherAddress)
-                    received[int(dictMessage["[SEQ]"])-seqY] = 1
-                    next_seq = int(dictMessage["[SEQ]"])
-                    if window_index == 0:
-                        while True:
-                            if received[next_seq - seqY] == 1:
-                                current_seq = recv_window.get_sequence_number(0)
-                                received[current_seq - seqY] = 0
-                                messageSoFar += recv_window.get_data(0)
-                                recv_window.move_window(1)
-                                firstSeq = ((firstSeq-seqY+1)%(window_size*2))+seqY
-                                next_seq = ((current_seq-seqY+1)%(window_size*2))+seqY
-                                print("Server: se ha movido la ventana")
-                                seqs[(next_seq - seqY) % window_size] = (next_seq + window_size)%(window_size*2)
-                            else:
-                                break
-                    if bytesSoFar >= min(message_length, buff_size) and message_length > 0:
-                        self.set_otherMessage(messageSoFar.encode())
-                        print(self.otherMessage)
-                        return self.otherMessage, self.otherAddress
+                    
+                    if (received[int(dictMessage["[SEQ]"])-seqY] == 0):
+                        print("Server: Se recibió un segmento de SEQ = " + dictMessage["[SEQ]"])
+                        bytesSoFar += len(dictMessage["[DATOS]"].encode())
+                        received[int(dictMessage["[SEQ]"])-seqY] = 1
+                        next_seq = int(dictMessage["[SEQ]"])
+                        if window_index == 0:
+                            while True:
+                                if received[next_seq - seqY] == 1:
+                                    current_seq = recv_window.get_sequence_number(0)
+                                    received[current_seq - seqY] = 0
+                                    messageSoFar += recv_window.get_data(0)
+                                    recv_window.move_window(1)
+                                    firstSeq = ((firstSeq-seqY+1)%(window_size*2))+seqY
+                                    next_seq = ((current_seq-seqY+1)%(window_size*2))+seqY
+                                    print("Server: se ha movido la ventana")
+                                    seqs[(next_seq - seqY) % window_size] = (next_seq + window_size)%(window_size*2)
+                                else:
+                                    break
+                        if bytesSoFar >= min(message_length, buff_size) and message_length > 0:
+                            self.set_otherMessage(messageSoFar.encode())
+                            print(self.otherMessage)
+                            return self.otherMessage, self.otherAddress
+                    else:
+                        print("Server: se volvió a recibir un SEQ ("+dictMessage["[SEQ]"]+")")
 
 
 
