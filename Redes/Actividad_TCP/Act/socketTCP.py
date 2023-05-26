@@ -27,6 +27,9 @@ class socketTCP:
     def set_message(self):
         self.message = input("Escriba su mensaje: ").encode()
 
+    def set_otherMessage(self, otherMessage):
+        self.otherMessage = otherMessage
+
     def set_otherMessageLen(self, otherMessageLen):
         self.otherMessageLen = otherMessageLen
     
@@ -127,6 +130,7 @@ class socketTCP:
                     
                     elif(dictThree["[SYN]"]=="1" and dictThree["[ACK]"]=="0" and dictThree["[FIN]"]=="0"):
                         print("Server: Volviendo a recibir SYN")
+                        self.set_seq(int(dictThree["[SEQ]"])+1)
                         dictTwo = {
                             "[SYN]": "1",
                             "[ACK]": "1",
@@ -191,11 +195,7 @@ class socketTCP:
                 self.send()
                 return
 
-        finalAttempts = 0
         while True:
-            if finalAttempts == 5:
-                print("Cliente: El server ya debe tener el mensaje completo")
-                break
 
             max_byte = min(len(self.message), byte_inicial + 3)
 
@@ -236,8 +236,6 @@ class socketTCP:
             except socket.timeout:
 
                 print("Cliente: Timeout!")
-                if max_byte == len(self.message):
-                    finalAttempts += 1
 
 
 
@@ -292,6 +290,20 @@ class socketTCP:
                 recv_message, self.otherAddress = self.socket.recvfrom(23)
                 dictMessage = socketTCP.parse_segment(recv_message)
                 break
+            elif (dictMessage["[SYN]"]=="0" and dictMessage["[ACK]"]=="0" and 
+                    dictMessage["[FIN]"]=="0" and int(dictMessage["[SEQ]"])<self.seq):
+                print("Server: Cliente está atrapado en el Stop and Wait anterior!")
+                dictAck = {
+                    "[SYN]": "0",
+                    "[ACK]": "1",
+                    "[FIN]": "0",
+                    "[SEQ]": dictMessage["[SEQ]"],
+                    "[DATOS]": ""
+                }
+                ack_segment = socketTCP.create_segment(dictAck)
+                self.socket.sendto(ack_segment, self.otherAddress)
+                self.recv()
+                return       
             else:
                 print("Server: No llegó bien el largo del mensaje!")
                 self.recv()
@@ -342,11 +354,13 @@ class socketTCP:
                     self.set_bytesSoFar(self.bytesSoFar+bytesSoFar)
                     break
 
-        self.otherMessage = full_message.encode()
+        self.set_otherMessage(full_message.encode())
         
         return self.otherMessage, self.otherAddress
     
     def close(self,t=0):
+
+        print("Cliente: comienza el cierre de conexión")
 
         if (t==3):
             self.socket.close()
@@ -411,6 +425,8 @@ class socketTCP:
 
     def recv_close(self):
 
+        print("Server: comienza el cierre de conexión")
+
         recv_message, self.otherAddress = self.socket.recvfrom(23)
         dictOne = socketTCP.parse_segment(recv_message)
 
@@ -461,6 +477,18 @@ class socketTCP:
             
             self.socket.close()
             print("Server: conexión cerrada")
+        elif (dictOne["[SYN]"]=="0" and dictOne["[ACK]"]=="0" and dictOne["[FIN]"]=="0"):
+            print("Server: Cliente está atrapado en el Stop and Wait anterior!")
+            dictAck = {
+                "[SYN]": "0",
+                "[ACK]": "1",
+                "[FIN]": "0",
+                "[SEQ]": dictOne["[SEQ]"],
+                "[DATOS]": ""
+            }
+            ack_segment = socketTCP.create_segment(dictAck)
+            self.socket.sendto(ack_segment, self.otherAddress)
+            self.recv_close()
 
         else:
             print("Server: FIN llegó con perdidas!")
