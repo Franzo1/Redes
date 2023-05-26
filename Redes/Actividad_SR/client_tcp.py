@@ -7,10 +7,10 @@ import socket
 
 client_socketTCP = socketTCP()
 client_socketTCP.set_buffSize(3)
-client_socketTCP.set_address(('localhost', 8005))
-client_socketTCP.connect(('localhost', 8005))
+client_socketTCP.set_address(('localhost', 8000))
+client_socketTCP.connect(('localhost', 8000))
 client_socketTCP.set_timeout(5)
-client_socketTCP.set_window_size(10)
+client_socketTCP.set_window_size(4)
 
 # test 1
 client_socketTCP.send("selective_repeat")

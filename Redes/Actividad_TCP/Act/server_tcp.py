@@ -4,7 +4,7 @@ import socket
 # SERVER
 
 server_socketTCP = socketTCP()
-server_socketTCP.set_address(('localhost', 8005))
+server_socketTCP.set_address(('localhost', 8000))
 server_socketTCP.bind()
 connection_socketTCP, new_address = server_socketTCP.accept()
 

@@ -72,7 +72,7 @@ class socketTCP:
                     "[SEQ]": str(self.seq+2),
                     "[DATOS]": ""
                 }
-                self.set_seq = self.seq + 2
+                self.set_seq(self.seq + 2)
                 three = socketTCP.create_segment(dictThree)
                 print("Cliente: envía ACK")
                 self.socket.sendto(three, self.otherAddress)
@@ -222,7 +222,7 @@ class socketTCP:
                 if (dictAck["[SYN]"]=="0" and dictAck["[ACK]"]=="1" and 
                     dictAck["[FIN]"]=="0" and int(dictAck["[SEQ]"])>self.seq):
                     print("Cliente: Se enviaron " + str(int(dictAck["[SEQ]"])-self.seq) + " bytes con éxito!, SEQ = " + str(self.seq))
-                    self.seq = int(dictAck["[SEQ]"])
+                    self.set_seq(int(dictAck["[SEQ]"]))
                 
                     message_sent_so_far += message_slice
 
@@ -280,7 +280,7 @@ class socketTCP:
                     return
                 break
             elif (dictMessage["[SYN]"]=="0" and dictMessage["[ACK]"]=="0" and 
-                    dictMessage["[FIN]"]=="0"):
+                    dictMessage["[FIN]"]=="0" and int(dictMessage["[SEQ]"])==self.seq):
                 full_message = ""
                 backup_message = ""
                 bytesSoFar = 0
