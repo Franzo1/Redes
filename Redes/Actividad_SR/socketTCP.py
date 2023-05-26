@@ -20,6 +20,8 @@ class socketTCP:
         self.lastSeq = None
         self.timeout = None
         self.messageIsComplete = True
+        self.number_of_sent_segments = 0
+        self.window_size = 0
 
     def set_address(self, address):
         self.address = address
@@ -53,6 +55,12 @@ class socketTCP:
     
     def set_messageIsComplete(self, messageIsComplete):
         self.messageIsComplete = messageIsComplete
+    
+    def set_number_of_sent_segments(self, number_of_sent_segments):
+        self.number_of_sent_segments = number_of_sent_segments
+
+    def set_window_size(self, window_size):
+        self.window_size = window_size
 
     def bind(self):
         self.socket.bind(self.address)
@@ -191,6 +199,7 @@ class socketTCP:
             }
         
         firstSegment = socketTCP.create_segment(firstDict)
+        self.set_number_of_sent_segments(self.number_of_sent_segments+1)
         self.socket.sendto(firstSegment, self.otherAddress)
         self.socket.settimeout(10)
         
@@ -225,7 +234,7 @@ class socketTCP:
             }
 
             segment = socketTCP.create_segment(dictSegment)
-
+            self.set_number_of_sent_segments(self.number_of_sent_segments+1)
             self.socket.sendto(segment, self.otherAddress)
 
             self.socket.settimeout(10)
@@ -514,6 +523,9 @@ class socketTCP:
             self.send_using_stop_and_wait()
         if mode == "selective_repeat":
             self.send_using_selective_repeat()
+        seg_sent = self.number_of_sent_segments
+        self.set_number_of_sent_segments(0)
+        print("Cliente: Finalizó el envío del mensaje (Número de segmentos enviados: "+str(seg_sent)+")")
     
     def recv(self, buff_size, mode="stop_and_wait"):
         self.set_buffSize(buff_size)
@@ -536,7 +548,7 @@ class socketTCP:
 
         data_list = [str(message_length)]+chunks
         
-        window_size = 3
+        window_size = self.window_size
         data_window = sw.SlidingWindow(window_size, data_list, seqY)
         acks = [0] * window_size*2
         seqs = [0] * window_size
@@ -545,22 +557,23 @@ class socketTCP:
         timeout_list = tm.TimerList(self.timeout, window_size)
 
         self.socket.setblocking(False)
-        repeats = 0
         
         for i in range(window_size):
             current_data = data_window.get_data(i)
             seqs[i] = data_window.get_sequence_number(i)
-            dictSegment = {
-                            "[SYN]": "0",
-                            "[ACK]": "0",
-                            "[FIN]": "0",
-                            "[SEQ]": str(seqs[i]),
-                            "[DATOS]": str(current_data)
-            }
-            current_segment = socketTCP.create_segment(dictSegment)
-            self.socket.sendto(current_segment, self.otherAddress)
-            print("Cliente: Se envió el trozo de SEQ = "+str(seqs[i]))
-            timeout_list.start_timer((seqs[i]-seqY)%window_size)
+            if seqs[i] != None:
+                dictSegment = {
+                                "[SYN]": "0",
+                                "[ACK]": "0",
+                                "[FIN]": "0",
+                                "[SEQ]": str(seqs[i]),
+                                "[DATOS]": str(current_data)
+                }
+                current_segment = socketTCP.create_segment(dictSegment)
+                self.set_number_of_sent_segments(self.number_of_sent_segments+1)
+                self.socket.sendto(current_segment, self.otherAddress)
+                print("Cliente: Se envió el trozo de SEQ = "+str(seqs[i]))
+                timeout_list.start_timer((seqs[i]-seqY)%window_size)
 
         while True:
             try:
@@ -580,18 +593,10 @@ class socketTCP:
                         else:
                             nones += 1
                     for i in timeouts:
-                        if nones == 0:
-                            for x in range(0, window_size):
-                                if i == (data_window.get_sequence_number(x)-seqY)%window_size:
-                                    windex = x
-                        elif nones == 1:
-                            print("Hay "+str(nones)+" none")
-                            for x in range(0, 1):
-                                if i == (data_window.get_sequence_number(x)-seqY)%window_size:
-                                    windex = x
-                        else:
-                            print("Hay "+str(nones)+" none")
-                            windex = 0
+                        for x in range(0, window_size-nones):
+                            if i == (data_window.get_sequence_number(x)-seqY)%window_size:
+                                windex = x
+                                break
                         current_data = data_window.get_data(windex)
                         current_seq = data_window.get_sequence_number(windex)
                         dictSegment = {
@@ -602,13 +607,11 @@ class socketTCP:
                             "[DATOS]": str(current_data)
                         }
                         current_segment = socketTCP.create_segment(dictSegment)
+                        self.set_number_of_sent_segments(self.number_of_sent_segments+1)
                         self.socket.sendto(current_segment, self.otherAddress)
 
                         print("Cliente: Se volvió a enviar el trozo de SEQ = "+str(current_seq))
                         timeout_list.start_timer((current_seq - seqY)%window_size)
-                        repeats+=1
-                        if repeats == 100:
-                            return
                 timeouts = []
                 answer, address = self.socket.recvfrom(self.buffSize+20)   
             except BlockingIOError:
@@ -630,6 +633,7 @@ class socketTCP:
                                 print("Cliente: Se ha movido la ventana")
                                 window_moves+=1
                                 if window_moves == len(data_list):
+                                    self.set_seq(self.seq+window_size)
                                     return
                                 current_data = data_window.get_data(window_size-1)
                                 if current_data != None:
@@ -642,6 +646,7 @@ class socketTCP:
                                                     "[DATOS]": str(current_data)
                                     }
                                     current_segment = socketTCP.create_segment(dictSegment)
+                                    self.set_number_of_sent_segments(self.number_of_sent_segments+1)
                                     self.socket.sendto(current_segment, self.otherAddress)
                                     print("Cliente: Se envió el trozo de SEQ = "+str(seqs[(i+(aSeq-seqY))%window_size]))
                                     timeout_list.start_timer((int(dictSegment["[SEQ]"])-seqY)%window_size)
@@ -652,9 +657,8 @@ class socketTCP:
 
         print("Server: Comienza Selective Repeat!")
 
-        window_size = 3
+        window_size = self.window_size
         seqY = self.seq
-        print(self.messageIsComplete)
         if (self.messageIsComplete == True):
             firstSeq = seqY
             self.set_otherMessage("".encode())
@@ -663,7 +667,6 @@ class socketTCP:
         else:
             firstSeq = ((self.lastSeq+1-seqY)%(window_size*2))+seqY
             message_length = self.otherMessageLen - len(self.otherMessage)
-        print(firstSeq)
         recv_window = sw.SlidingWindow(window_size, [], seqY)
         received = [0] * window_size*2
         seqs = [0] * window_size
@@ -698,6 +701,7 @@ class socketTCP:
                     while True:
                         if received[next_seq - seqY] == 1:
                             current_seq = recv_window.get_sequence_number(0)
+                            bytesSoFar += len(recv_window.get_data(0).encode())
                             received[current_seq - seqY] = 0
                             if not (next_seq == seqY and messageSoFar == ""):
                                 messageSoFar += recv_window.get_data(0)
@@ -706,6 +710,14 @@ class socketTCP:
                             next_seq = ((current_seq-seqY+1)%(window_size*2))+seqY
                             print("Server: se ha movido la ventana")
                             seqs[(next_seq - seqY) % window_size] = (next_seq + window_size)%(window_size*2)
+                            if bytesSoFar >= min(message_length, buff_size) and message_length > 0:
+                                if message_length > buff_size and bytesSoFar >= buff_size:
+                                    self.set_messageIsComplete(False)
+                                self.set_otherMessage(self.otherMessage+messageSoFar.encode())
+                                if len(self.otherMessage) >= message_length:
+                                    self.set_messageIsComplete(True)
+                                    self.set_seq(self.seq+window_size)
+                                return messageSoFar.encode(), self.otherAddress
                         else:
                             break
                 elif seqs.count(int(dictMessage["[SEQ]"])) == 0:
@@ -738,13 +750,13 @@ class socketTCP:
                     
                     if (received[int(dictMessage["[SEQ]"])-seqY] == 0):
                         print("Server: Se recibió un segmento de SEQ = " + dictMessage["[SEQ]"])
-                        bytesSoFar += len(dictMessage["[DATOS]"].encode())
                         received[int(dictMessage["[SEQ]"])-seqY] = 1
                         next_seq = int(dictMessage["[SEQ]"])
                         if window_index == 0:
                             while True:
                                 if received[next_seq - seqY] == 1:
                                     current_seq = recv_window.get_sequence_number(0)
+                                    bytesSoFar += len(recv_window.get_data(0).encode())
                                     received[current_seq - seqY] = 0
                                     messageSoFar += recv_window.get_data(0)
                                     self.set_lastSeq(current_seq)
@@ -753,15 +765,16 @@ class socketTCP:
                                     next_seq = ((current_seq-seqY+1)%(window_size*2))+seqY
                                     print("Server: se ha movido la ventana")
                                     seqs[(next_seq - seqY) % window_size] = (next_seq + window_size)%(window_size*2)
+                                    if bytesSoFar >= min(message_length, buff_size) and message_length > 0:
+                                        if message_length > buff_size and bytesSoFar >= buff_size:
+                                            self.set_messageIsComplete(False)
+                                        self.set_otherMessage(self.otherMessage+messageSoFar.encode())
+                                        if len(self.otherMessage) >= message_length:
+                                            self.set_messageIsComplete(True)
+                                            self.set_seq(self.seq+window_size)
+                                        return messageSoFar.encode(), self.otherAddress
                                 else:
                                     break
-                        if bytesSoFar >= min(message_length, buff_size) and message_length > 0:
-                            if message_length > buff_size and bytesSoFar >= buff_size:
-                                self.set_messageIsComplete(False)
-                            self.set_otherMessage(self.otherMessage+messageSoFar.encode())
-                            if len(self.otherMessage) >= message_length:
-                                self.set_messageIsComplete(True)
-                            return messageSoFar.encode(), self.otherAddress
                     else:
                         print("Server: se volvió a recibir un SEQ ("+dictMessage["[SEQ]"]+")")
 

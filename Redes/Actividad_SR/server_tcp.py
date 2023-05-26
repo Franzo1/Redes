@@ -4,9 +4,10 @@ import socket
 # SERVER
 
 server_socketTCP = socketTCP()
-server_socketTCP.set_address(('localhost', 8010))
+server_socketTCP.set_address(('localhost', 8005))
 server_socketTCP.bind()
 connection_socketTCP, new_address = server_socketTCP.accept()
+connection_socketTCP.set_window_size(10)
 
 # test 1
 full_message, newAddress = connection_socketTCP.recv(16, "selective_repeat")
