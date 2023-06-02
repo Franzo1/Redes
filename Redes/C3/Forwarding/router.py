@@ -27,15 +27,28 @@ def check_routes(routes_file_name, destination_address):
 
 router_IP = sys.argv[1]
 router_port = sys.argv[2]
+router_routes = sys.argv[3]
 
 print("Se ha creado un router en la dirección (" + str(router_IP) + ", " + str(router_port) + ")")
 
-router_address = (router_IP, router_port)
+router_address = (str(router_IP), int(router_port))
 
-""" router_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+router_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 router_socket.bind(router_address)
 router_socket.setblocking(True)
 
-received_message, server_address = router_socket.recvfrom(24) """
-
-print(check_routes(sys.argv[3], ("127.0.0.1", 8882)))
+while True:
+    
+    received_message, server_address = router_socket.recvfrom(24)
+    parsed_message = parse_packet(received_message)
+    destination_address = (str(parsed_message["IP"]), int(parsed_message["PORT"]))
+    
+    if router_address == destination_address:
+        print("Se recibió el siguiente mensaje: " + str(parsed_message["MESSAGE"]))
+    else:
+        next_hop = check_routes(router_routes, destination_address)
+        if next_hop == None:
+            print("No hay rutas hacia " + str(destination_address) + ' para paquete "' + str(parsed_message["MESSAGE"]) + '"')
+        else:
+            print('Redirigiendo paquete "' + str(parsed_message["MESSAGE"]) + '" con destino final ' + str(destination_address) + " desde " + str(router_address) + " hacia " + str(next_hop))
+            router_socket.sendto(received_message, next_hop) 
