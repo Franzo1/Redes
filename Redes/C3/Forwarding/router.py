@@ -16,11 +16,17 @@ def create_packet(parsed_IP_packet):
     str_packet = str_packet[:-1]
     return str_packet
 
+line_index = 0
+
 def check_routes(routes_file_name, destination_address):
     txt_file = open(routes_file_name, "r")
     router_table = txt_file.readlines()
-    for line in router_table:
-        line_list = line.split(" ")
+    len_table = len(router_table)
+    global line_index
+    for i in range(0, len_table):
+        line_index = line_index%len_table
+        line_list = router_table[line_index].split(" ")
+        line_index += 1
         if int(line_list[1]) <= destination_address[1] <= int(line_list[2]):
             return (line_list[3], int(line_list[4])) 
     return None
