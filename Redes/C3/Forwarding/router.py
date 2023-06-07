@@ -4,7 +4,7 @@ import socket
 def parse_packet(IP_packet):
     decoded_packet = IP_packet.decode()
     list_packet = decoded_packet.split(",")
-    list_keys = ["IP","PORT","MESSAGE"]
+    list_keys = ["IP","PORT","TTL","MESSAGE"]
     dict_packet = dict(zip(list_keys,list_packet))
     return dict_packet
 
@@ -47,14 +47,21 @@ while True:
     
     received_message, server_address = router_socket.recvfrom(24)
     parsed_message = parse_packet(received_message)
-    destination_address = (str(parsed_message["IP"]), int(parsed_message["PORT"]))
     
-    if router_address == destination_address:
-        print("Se recibió el siguiente mensaje: " + str(parsed_message["MESSAGE"]))
+    if int(parsed_message["TTL"]) <= 0:
+        print("Se recibió paquete '" + str(parsed_message["MESSAGE"]) + "' con TTL 0")
+    
     else:
-        next_hop = check_routes(router_routes, destination_address)
-        if next_hop == None:
-            print("No hay rutas hacia " + str(destination_address) + ' para paquete "' + str(parsed_message["MESSAGE"]) + '"')
+        destination_address = (str(parsed_message["IP"]), int(parsed_message["PORT"]))
+        
+        if router_address == destination_address:
+            print("Se recibió el siguiente mensaje: " + str(parsed_message["MESSAGE"]))
         else:
-            print('Redirigiendo paquete "' + str(parsed_message["MESSAGE"]) + '" con destino final ' + str(destination_address) + " desde " + str(router_address) + " hacia " + str(next_hop))
-            router_socket.sendto(received_message, next_hop) 
+            next_hop = check_routes(router_routes, destination_address)
+            if next_hop == None:
+                print("No hay rutas hacia " + str(destination_address) + ' para paquete "' + str(parsed_message["MESSAGE"]) + '"')
+            else:
+                print('Redirigiendo paquete "' + str(parsed_message["MESSAGE"]) + '" con destino final ' + str(destination_address) + " desde " + str(router_address) + " hacia " + str(next_hop))
+                parsed_message["TTL"] = str(int(parsed_message["TTL"])-1)
+                message_to_resend = create_packet(parsed_message)
+                router_socket.sendto(message_to_resend.encode(), next_hop) 
