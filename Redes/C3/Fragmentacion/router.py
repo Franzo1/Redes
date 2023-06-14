@@ -84,14 +84,21 @@ def reassemble_IP_packet(fragment_list):
         else:
             return None
     else:
-        offset = 0
+        offset = -1
+        for fragment in fragment_list:
+            if int(parse_packet(fragment)["OFFSET"]) == 0:
+                offset = 0
+        if offset == -1:
+            return None
         i = 0
+        x = 0
         message = ""
         while True:
             parsed_fragment = parse_packet(fragment_list[i])
             if int(parsed_fragment["OFFSET"]) == offset:
                 message += str(parsed_fragment["MESSAGE"])
-                offset += int(parsed_fragment["SIZE"])
+                offset += len(parsed_fragment["MESSAGE"].encode())
+                x = 0
                 if parsed_fragment["FLAG"] == "0":
                     reassembled_packet = parsed_fragment.copy()
                     reassembled_packet["OFFSET"] = "0"
@@ -100,6 +107,9 @@ def reassemble_IP_packet(fragment_list):
                     reassembled_packet["MESSAGE"] = message
                     return reassembled_packet
             i = (i+1)%len(fragment_list)
+            x += 1
+            if x == len(fragment_list):
+                return None
 
 router_IP = sys.argv[1]
 router_port = sys.argv[2]
@@ -120,7 +130,6 @@ while True:
     if "\n" in received_message.decode():
         received_message = (received_message.decode()[:-1]).encode()
     parsed_message = parse_packet(received_message)
-    print(received_message)
     
     if int(parsed_message["TTL"]) <= 0:
         print("Se recibió paquete '" + str(parsed_message["ID"]) + "' con TTL 0")
@@ -136,7 +145,7 @@ while True:
                 fragments_dictionary[str(parsed_message["ID"])] = [received_message]
             reassembled_packet = reassemble_IP_packet(fragments_dictionary[str(parsed_message["ID"])])
             if reassembled_packet != None:
-                print(reassembled_packet["MESSAGE"])
+                print("Mensaje final re-ensamblado: " + reassembled_packet["MESSAGE"])
         else:
             next_hop, mtu = check_routes(router_routes, destination_address)
             if next_hop == None:
@@ -147,5 +156,4 @@ while True:
                 message_to_resend = create_packet(parsed_message)
                 fragment_list = fragment_IP_packet(message_to_resend.encode(), mtu)
                 for fragment in fragment_list:
-                    print(fragment)
                     router_socket.sendto(fragment, next_hop) 
