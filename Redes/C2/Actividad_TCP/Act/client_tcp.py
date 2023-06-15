@@ -4,7 +4,7 @@ import socket
 # CLIENT
 
 client_socketTCP = socketTCP()
-client_socketTCP.set_buffSize(3)
+client_socketTCP.set_buffSize(16)
 client_socketTCP.connect(('localhost', 8000))
 
 # test 1

@@ -112,7 +112,7 @@ class socketTCP:
             while nTimeouts < 6:
                 self.socket.settimeout(5)
                 try:
-                    recv_message, self.otherAddress = self.socket.recvfrom(23)
+                    recv_message, self.otherAddress = self.socket.recvfrom(36)
                     dictThree = socketTCP.parse_segment(recv_message)
                     
                     if(dictThree["[SYN]"]=="0" and dictThree["[ACK]"]=="1" and 
@@ -197,7 +197,7 @@ class socketTCP:
 
         while True:
 
-            max_byte = min(len(self.message), byte_inicial + 3)
+            max_byte = min(len(self.message), byte_inicial + 16)
 
             message_slice = self.message[byte_inicial: max_byte]
             
@@ -216,7 +216,7 @@ class socketTCP:
             self.socket.settimeout(10)
             try:
                 
-                recv_message, self.otherAddress = self.socket.recvfrom(23)
+                recv_message, self.otherAddress = self.socket.recvfrom(36)
                 dictAck = socketTCP.parse_segment(recv_message)
                 
                 if (dictAck["[SYN]"]=="0" and dictAck["[ACK]"]=="1" and 
@@ -229,7 +229,7 @@ class socketTCP:
                     if max_byte == len(self.message):
                         break
 
-                    byte_inicial += 3
+                    byte_inicial += 16
                 else:
                     print("Cliente: Mensaje llegó mal del server!")
 
@@ -243,7 +243,7 @@ class socketTCP:
     def recv(self):
         
         print("Server: Comienza Stop and Wait")
-        recv_message, self.otherAddress = self.socket.recvfrom(23)
+        recv_message, self.otherAddress = self.socket.recvfrom(36)
         dictMessage = socketTCP.parse_segment(recv_message)
         while True:
             if (dictMessage["[SYN]"]=="0" and dictMessage["[ACK]"]=="0" and 
@@ -270,7 +270,7 @@ class socketTCP:
                 is_end_of_message = min(message_length, bytesSoFar) == message_length
 
                 firstMessage = True
-                recv_message, self.otherAddress = self.socket.recvfrom(23)
+                recv_message, self.otherAddress = self.socket.recvfrom(36)
                 dictMessage = socketTCP.parse_segment(recv_message)
                 if (not (dictMessage["[SYN]"]=="0" and dictMessage["[ACK]"]=="0" and 
                     dictMessage["[FIN]"]=="0" and int(dictMessage["[SEQ]"])==self.seq)):
@@ -287,7 +287,7 @@ class socketTCP:
                 message_length = self.otherMessageLen - self.bytesSoFar
                 is_end_of_message = min(message_length, bytesSoFar) == message_length
                 firstMessage = True
-                recv_message, self.otherAddress = self.socket.recvfrom(23)
+                recv_message, self.otherAddress = self.socket.recvfrom(36)
                 dictMessage = socketTCP.parse_segment(recv_message)
                 break
             elif (dictMessage["[SYN]"]=="0" and dictMessage["[ACK]"]=="0" and 
@@ -312,7 +312,7 @@ class socketTCP:
         while not is_end_of_message:
 
             if(not firstMessage):
-                recv_message, self.otherAddress = self.socket.recvfrom(23)
+                recv_message, self.otherAddress = self.socket.recvfrom(36)
                 dictMessage = socketTCP.parse_segment(recv_message)
             firstMessage=False
             
