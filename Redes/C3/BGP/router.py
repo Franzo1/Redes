@@ -114,6 +114,7 @@ def reassemble_IP_packet(fragment_list):
 def create_BGP_message(router_routes, router_port):
     txt_file = open(router_routes, "r")
     router_table = txt_file.readlines()
+    txt_file.close()
     BGP_message = "BGP_ROUTES\n" + str(router_port) + "\n"
     for line in router_table:
         line_list = line.split(" ")
@@ -128,23 +129,23 @@ def create_BGP_message(router_routes, router_port):
     BGP_message += "END_ROUTES"
     return BGP_message.encode()
 
-def send_BPG_message(router_socket, router_routes, router_port, router_table):
-    for line in router_table:
-        line_list = line.split(" ")
-        BGP_message = create_BGP_message(router_routes, router_port)
-        router_socket.sendto(BGP_message, (line_list[0], int(line_list[1])))
+def send_BPG_message(router_socket, router_routes, router_port, neighbour_list):
+    BGP_message = create_BGP_message(router_routes, router_port)
+    for neighbour in neighbour_list:
+        router_socket.sendto(BGP_message, neighbour)
     return BGP_message.decode()
 
-def check_if_destination_exists(BGP_list, steps, router_table, line):
+def check_if_destination_exists(BGP_list, steps, router_table, router_port, line):
     for route in BGP_list:
         my_steps = route.split(" ")
         if steps[0] == my_steps[0]:
-            if len(steps) < len(my_steps):
+            if len(steps) + 1 < len(my_steps):
                 new_routes = ""
                 for my_route in router_table:
                     my_route_steps = my_route.split(" ")
                     if steps[0] == my_route_steps[1]:
-                        new_routes += my_route_steps[0] + " " + line + " " + my_route_steps[0] + " " +steps[-2] + " " + my_route_steps[-1] + "\n"
+                        print("Llegó una corta más corta para el destino " + str(steps[0]))
+                        new_routes += my_route_steps[0] + " " + line + " " + router_port + " " + my_route_steps[0] + " " +steps[-2] + " " + my_route_steps[-1] + "\n"
                     else:
                         new_routes += my_route + "\n"
                     new_routes = new_routes[:-1]
@@ -152,42 +153,64 @@ def check_if_destination_exists(BGP_list, steps, router_table, line):
                     txt_file.write(new_routes)
                     txt_file.close()
                 return 1
+            else:
+                print("Llegó una ruta más larga que una ya existente al mismo destino.")
+                return -1
     return 0
 
 def run_BGP(router_socket, router_routes, router_port, router_IP):
+    print("Comienza BGP")
     txt_file = open(router_routes, "r")
     router_table = txt_file.readlines()
+    txt_file.close()
+    neighbour_list = []
     for line in router_table:
         line_list = line.split(" ")
+        neighbour_list += [(line_list[0], int(line_list[1]))]
         router_socket.sendto("START_BGP".encode(), (line_list[0], int(line_list[1])))
-    BGP_message = send_BPG_message(router_socket, router_routes, router_port, router_table)
+    BGP_message = send_BPG_message(router_socket, router_routes, router_port, neighbour_list)
     BGP_list = BGP_message.split("\n")[2:-1]
     router_socket.settimeout(10)
-    try:
-        received_message, server_address = router_socket.recvfrom(1000)
-        decoded_message = received_message.decode()
-        if "BGP_ROUTES" in decoded_message:
-            message_list = decoded_message.split("\n")[2:-1]
-            for line in message_list:
-                if not (router_port in line):
-                    steps = line.split(" ")
-                    if check_if_destination_exists(BGP_list, steps, router_table, line) == 0:
-                        txt_file = open(router_routes, "a")
-                        new_line = "\n" + router_IP + " " + line + " " + router_IP + " "
-                        for my_route in router_table:
-                            my_route_data = my_route.split(" ")
-                            if my_route_data[-2] == steps[-2]:
-                                new_line += str(my_route_data[-1])
-                                break
-                        txt_file.write(new_line)      
-                        txt_file.close()
-
-    except socket.timeout:
-        print("Terminó BGP")
-        return
-    
-
-
+    has_changed = False
+    while True:
+        try:
+            received_message, server_address = router_socket.recvfrom(1000)
+            decoded_message = received_message.decode()
+            if "BGP_ROUTES" in decoded_message:
+                message_list = decoded_message.split("\n")[2:-1]
+                for line in message_list:
+                    if not (router_port in line):
+                        steps = line.split(" ")
+                        status = check_if_destination_exists(BGP_list, steps, router_table, router_port, line)
+                        if status > -1:
+                            has_changed = True
+                            if status == 0:
+                                print("Llegó una ruta para un nuevo destino: " + message_list[0]) 
+                                txt_file = open(router_routes, "a")
+                                new_line = "\n" + router_IP + " " + line + " " +router_port + " " + router_IP + " " + router_port + " " + str(1000)
+                                for my_route in router_table:
+                                    my_route_data = my_route.split(" ")
+                                    if my_route_data[-2] == steps[-2]:
+                                        new_line += str(my_route_data[-1])
+                                        break
+                                txt_file.write(new_line)      
+                                txt_file.close()
+                if has_changed:
+                    has_changed = False
+                    txt_file = open(router_routes, "r")
+                    router_table = txt_file.readlines()
+                    txt_file.close()
+                    for neighbour in neighbour_list:
+                        router_socket.sendto("START_BGP".encode(), neighbour)
+                    BGP_message = send_BPG_message(router_socket, router_routes, router_port, neighbour_list)
+                    BGP_list = BGP_message.split("\n")[2:-1]
+            router_socket.settimeout(10)
+        except socket.timeout:
+            print("Terminó BGP")
+            txt_file = open(router_routes, "r")
+            router_table = txt_file.readlines()
+            txt_file.close()
+            return router_table
 
 router_IP = sys.argv[1]
 router_port = sys.argv[2]
@@ -205,33 +228,35 @@ fragments_dictionary = {}
 while True:
     
     received_message, server_address = router_socket.recvfrom(1000)
-    if "\n" in received_message.decode():
-        received_message = (received_message.decode()[:-1]).encode()
-    parsed_message = parse_packet(received_message)
-    
-    if int(parsed_message["TTL"]) <= 0:
-        print("Se recibió paquete '" + str(parsed_message["ID"]) + "' con TTL 0")
-    
+    if "START_BGP" in received_message.decode():
+        router_table = run_BGP(router_socket, router_routes, router_port, router_IP)
     else:
-        destination_address = (str(parsed_message["IP"]), int(parsed_message["PORT"]))
+        if "\n" in received_message.decode():
+            received_message = (received_message.decode()[:-1]).encode()
+        parsed_message = parse_packet(received_message)
         
-        if router_address == destination_address:
-            print("Se recibió el siguiente mensaje: " + str(parsed_message["MESSAGE"]))
-            if str(parsed_message["ID"]) in fragments_dictionary:
-                fragments_dictionary[str(parsed_message["ID"])] = fragments_dictionary[str(parsed_message["ID"])] + [received_message]
-            else:
-                fragments_dictionary[str(parsed_message["ID"])] = [received_message]
-            reassembled_packet = reassemble_IP_packet(fragments_dictionary[str(parsed_message["ID"])])
-            if reassembled_packet != None:
-                print("Mensaje final re-ensamblado: " + reassembled_packet["MESSAGE"])
+        if int(parsed_message["TTL"]) <= 0:
+            print("Se recibió paquete '" + str(parsed_message["ID"]) + "' con TTL 0")
         else:
-            next_hop, mtu = check_routes(router_routes, destination_address)
-            if next_hop == None:
-                print("No hay rutas hacia " + str(destination_address) + ' para paquete "' + str(parsed_message["ID"]) + '"')
+            destination_address = (str(parsed_message["IP"]), int(parsed_message["PORT"]))
+            
+            if router_address == destination_address:
+                print("Se recibió el siguiente mensaje: " + str(parsed_message["MESSAGE"]))
+                if str(parsed_message["ID"]) in fragments_dictionary:
+                    fragments_dictionary[str(parsed_message["ID"])] = fragments_dictionary[str(parsed_message["ID"])] + [received_message]
+                else:
+                    fragments_dictionary[str(parsed_message["ID"])] = [received_message]
+                reassembled_packet = reassemble_IP_packet(fragments_dictionary[str(parsed_message["ID"])])
+                if reassembled_packet != None:
+                    print("Mensaje final re-ensamblado: " + reassembled_packet["MESSAGE"])
             else:
-                print('Redirigiendo paquete "' + str(parsed_message["ID"]) + '" con destino final ' + str(destination_address) + " desde " + str(router_address) + " hacia " + str(next_hop))
-                parsed_message["TTL"] = str(int(parsed_message["TTL"])-1)
-                message_to_resend = create_packet(parsed_message)
-                fragment_list = fragment_IP_packet(message_to_resend.encode(), mtu)
-                for fragment in fragment_list:
-                    router_socket.sendto(fragment, next_hop) 
+                next_hop, mtu = check_routes(router_routes, destination_address)
+                if next_hop == None:
+                    print("No hay rutas hacia " + str(destination_address) + ' para paquete "' + str(parsed_message["ID"]) + '"')
+                else:
+                    print('Redirigiendo paquete "' + str(parsed_message["ID"]) + '" con destino final ' + str(destination_address) + " desde " + str(router_address) + " hacia " + str(next_hop))
+                    parsed_message["TTL"] = str(int(parsed_message["TTL"])-1)
+                    message_to_resend = create_packet(parsed_message)
+                    fragment_list = fragment_IP_packet(message_to_resend.encode(), mtu)
+                    for fragment in fragment_list:
+                        router_socket.sendto(fragment, next_hop) 
